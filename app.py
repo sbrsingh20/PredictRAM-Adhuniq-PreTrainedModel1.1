@@ -21,28 +21,29 @@ model_file = st.file_uploader("Upload Pre-Trained Model (.pkl file)", type=["pkl
 if model_file:
     try:
         # Load the model file
-        model = joblib.load(model_file)
-        
-        # Load the model details (for evaluation metrics, coefficients, etc.)
-        model_details_file = os.path.join('models', model_file.name.replace('_prediction_model.pkl', '_model_details.pkl'))
-        model_details = joblib.load(model_details_file)
+        model_details = joblib.load(model_file)
 
-        # Display Model Details
-        if model_details:
+        # Handle different model types
+        if isinstance(model_details, dict):
+            model = model_details.get('model')
+            model_params = model_details.get('parameters', {})
+            model_accuracy = model_details.get('accuracy', 'Not available')
+        else:
+            model = model_details
+            model_params = model.get_params() if hasattr(model, 'get_params') else "No parameters found"
+            model_accuracy = "Not available"
+
+        if model:
             st.success("Model loaded successfully!")
             st.subheader("Model Details")
-            st.write("**Model Type:**", model_details['model'])
-            st.write("**Model Accuracy:**", f"{model_details['accuracy']:.2f}%")
-            st.write("**R-squared:**", f"{model_details['r2_score']:.4f}")
-            st.write("**Mean Squared Error (MSE):**", f"{model_details['mean_squared_error']:.4f}")
-            st.write("**Model Coefficients:**")
-            st.write(f"Inflation Rate Coefficient: {model_details['coefficients']['Inflation Rate']:.4f}")
-            st.write(f"Interest Rate Coefficient: {model_details['coefficients']['Interest Rate']:.4f}")
-            st.write(f"Geopolitical Risk Coefficient: {model_details['coefficients']['Geopolitical Risk']:.4f}")
-            st.write(f"Intercept: {model_details['intercept']:.4f}")
+            st.write("**Model Type:**", type(model).__name__)
+            st.write("**Model Parameters:**", model_params)
+            st.write("**Model Accuracy:**", model_accuracy)
 
             # Step 2: Select Stocks
-            available_stocks = ['ITC.NS', 'TCS.NS', 'WIPRO.NS', '^NSEI']
+            # Get stock list from the 'stockdata' folder
+            stock_files = [f for f in os.listdir('stockdata') if f.endswith('.xlsx')]
+            available_stocks = [f.split('.')[0] for f in stock_files]
             selected_stocks = st.multiselect("Select Stocks", available_stocks)
 
             if selected_stocks:
@@ -50,33 +51,43 @@ if model_file:
                 start_date = st.date_input("Start Date", value=pd.to_datetime('2023-01-01'))
                 end_date = st.date_input("End Date", value=pd.to_datetime('2023-12-31'))
 
-                # Display Historical Stock Performance
-                st.subheader("Historical Stock Performance")
-                for stock in selected_stocks:
-                    stock_data = yf.download(stock, start=start_date, end=end_date)['Adj Close']
+                # Step 3: Load GDP and Macroeconomic Data
+                gdp_data = pd.read_excel('GDP data.xlsx', sheet_name='GDP', parse_dates=['Date'])
+                st.subheader("Macroeconomic Data Overview")
+                st.write(gdp_data.head())  # Display first few rows of the GDP data
 
-                    if not stock_data.empty:
-                        # Plot Historical Data
-                        fig, ax = plt.subplots()
-                        stock_data.plot(ax=ax, title=f"Historical Prices for {stock}")
-                        ax.set_xlabel("Date")
-                        ax.set_ylabel("Price (Adjusted Close)")
-                        st.pyplot(fig)
-
-                        returns = stock_data.pct_change().dropna()
-                    else:
-                        st.warning(f"No data available for {stock} in the selected date range.")
-
-                # Step 3: Input Macroeconomic Parameters
-                st.subheader("Input Macroeconomic Scenario")
-                inflation_rate = st.number_input("Inflation Rate (%)", value=5.0, format="%.2f")
-                interest_rate = st.number_input("Interest Rate (%)", value=3.0, format="%.2f")
+                # Step 4: Input Macroeconomic Scenario
+                inflation_rate = st.number_input("Inflation Rate (%)", value=gdp_data['Inflation'].mean(), format="%.2f")
+                interest_rate = st.number_input("Interest Rate (%)", value=gdp_data['Interest Rate'].mean(), format="%.2f")
                 geopolitical_risk = st.slider("Geopolitical Risk (0-10)", 0, 10, 5)
 
                 # Prepare New Scenario for Prediction
                 new_scenario = np.array([inflation_rate, interest_rate, geopolitical_risk]).reshape(1, -1)
 
-                # Step 4: Predict Returns
+                # Step 5: Display Historical Stock Performance
+                st.subheader("Historical Stock Performance")
+                for stock in selected_stocks:
+                    stock_file = f"stockdata/{stock}.xlsx"
+
+                    if os.path.exists(stock_file):
+                        stock_data = pd.read_excel(stock_file, parse_dates=['Date'], index_col='Date')
+                        stock_data = stock_data[(stock_data.index >= pd.to_datetime(start_date)) & (stock_data.index <= pd.to_datetime(end_date))]
+
+                        if not stock_data.empty:
+                            # Plot Historical Data
+                            fig, ax = plt.subplots()
+                            stock_data['Close'].plot(ax=ax, title=f"Historical Prices for {stock}")
+                            ax.set_xlabel("Date")
+                            ax.set_ylabel("Price (Close)")
+                            st.pyplot(fig)
+
+                            returns = stock_data['Close'].pct_change().dropna()
+                        else:
+                            st.warning(f"No data available for {stock} in the selected date range.")
+                    else:
+                        st.warning(f"No data file found for {stock}.")
+
+                # Step 6: Predict Returns
                 if st.button("Predict Returns"):
                     st.subheader("Predicted Returns for Selected Stocks")
                     for stock in selected_stocks:
@@ -87,11 +98,14 @@ if model_file:
                         fig, ax = plt.subplots(2, 1, figsize=(10, 8), gridspec_kw={'height_ratios': [3, 1]})
 
                         # Fetch and Plot Stock Data Again
-                        stock_data = yf.download(stock, start=start_date, end=end_date)['Adj Close']
-                        if not stock_data.empty:
-                            stock_data.plot(ax=ax[0], color="blue", title=f"Historical Prices for {stock}")
-                            ax[0].set_ylabel("Price (Adjusted Close)")
-                            ax[0].set_xlabel("")
+                        stock_file = f"stockdata/{stock}.xlsx"
+                        if os.path.exists(stock_file):
+                            stock_data = pd.read_excel(stock_file, parse_dates=['Date'], index_col='Date')
+                            stock_data = stock_data[(stock_data.index >= pd.to_datetime(start_date)) & (stock_data.index <= pd.to_datetime(end_date))]
+                            if not stock_data.empty:
+                                stock_data['Close'].plot(ax=ax[0], color="blue", title=f"Historical Prices for {stock}")
+                                ax[0].set_ylabel("Price (Close)")
+                                ax[0].set_xlabel("")
 
                         ax[1].bar(['Predicted Return'], [predicted_return], color='orange')
                         ax[1].set_ylabel('Return (%)')
@@ -101,7 +115,7 @@ if model_file:
             else:
                 st.warning("Please select at least one stock to proceed.")
         else:
-            st.error("No valid model details found in the uploaded file.")
+            st.error("No valid model found in the uploaded file.")
     except Exception as e:
         st.error(f"Error loading model: {e}")
 else:
