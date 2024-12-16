@@ -12,7 +12,7 @@ This app allows users to:
 - Upload a pre-trained model.
 - View the model's parameters and accuracy.
 - Select multiple stocks for prediction.
-- Input macroeconomic parameters to simulate a scenario.
+- Input macroeconomic parameters to simulate a scenario (Inflation, Interest Rate, and VIX).
 - View historical stock performance and predicted returns.
 """)
 
@@ -59,10 +59,10 @@ if model_file:
                 # Step 4: Input Macroeconomic Scenario
                 inflation_rate = st.number_input("Inflation Rate (%)", value=gdp_data['Inflation'].mean(), format="%.2f")
                 interest_rate = st.number_input("Interest Rate (%)", value=gdp_data['Interest Rate'].mean(), format="%.2f")
-                geopolitical_risk = st.slider("Geopolitical Risk (0-10)", 0, 10, 5)
+                vix_value = st.slider("VIX", 0.0, 100.0, gdp_data['VIX'].mean(), step=0.1)
 
-                # Prepare New Scenario for Prediction
-                new_scenario = np.array([inflation_rate, interest_rate, geopolitical_risk]).reshape(1, -1)
+                # Prepare New Scenario for Prediction (Inflation, Interest Rate, and VIX)
+                new_scenario = np.array([inflation_rate, interest_rate, vix_value]).reshape(1, -1)
 
                 # Step 5: Display Historical Stock Performance
                 st.subheader("Historical Stock Performance")
