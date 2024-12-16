@@ -52,7 +52,7 @@ if model_file:
                 end_date = st.date_input("End Date", value=pd.to_datetime('2023-12-31'))
 
                 # Step 3: Load GDP and Macroeconomic Data
-                gdp_data = pd.read_excel('GDP data.xlsx', sheet_name='GDP', parse_dates=['Date'])
+                gdp_data = pd.read_excel('GDP data.xlsx', sheet_name='Sheet1', parse_dates=['Date'])
                 st.subheader("Macroeconomic Data Overview")
                 st.write(gdp_data.head())  # Display first few rows of the GDP data
 
